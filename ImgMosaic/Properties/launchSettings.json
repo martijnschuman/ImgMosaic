@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ImgMosaic": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
