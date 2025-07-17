@@ -16,17 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="output\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="input\green-100-100.png">
+    <None Update="src\input\green-100-100.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="input\white-100-100.png">
+    <None Update="src\input\white-100-100.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="target\target-01.png">
+    <None Update="src\target\target-01.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
