@@ -7,12 +7,7 @@ string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "output");
 string targetPath = Path.Combine(Directory.GetCurrentDirectory(), "target");
 
 
-File: { 
-    Rows:
-    Cols:
-    Channels:
 
-} 
 
 
 if (Directory.Exists(inputPath)) {
@@ -26,6 +21,8 @@ if (Directory.Exists(inputPath)) {
         }
         else {
             Console.WriteLine($"Loaded tile: {Path.GetFileName(imagePath)}, Size: {tileImage.Width}x{tileImage.Height}");
+            string fileName = Path.GetFileNameWithoutExtension(imagePath);
+
         }
     }
 }
