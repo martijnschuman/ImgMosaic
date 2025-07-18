@@ -1,4 +1,6 @@
-﻿namespace ImgMosaic.Models;
+﻿using OpenCvSharp;
+
+namespace ImgMosaic.Models;
 
 public class Image {
     public string FilePath { get; set; }
@@ -8,8 +10,10 @@ public class Image {
     public int Rows { get; set; }
     public long SizeInBytes { get; set; }
     public int Channels { get; set; }
+    public Mat FullMatrix { get; set; }
+    public Pixel[,]? DownSampledMatrix { get; set; }
 
-    public Image(string filePath, string fileName, string fileExtension, int cols, int rows, long sizeInBytes, int channels) {
+    public Image(string filePath, string fileName, string fileExtension, int cols, int rows, long sizeInBytes, int channels, Mat fullMatrix, Pixel[,]? downSampledMatrix) {
         FilePath = filePath;
         FileName = fileName;
         FileExtension = fileExtension;
@@ -17,5 +21,7 @@ public class Image {
         Rows = rows;
         SizeInBytes = sizeInBytes;
         Channels = channels;
+        FullMatrix = fullMatrix;
+        DownSampledMatrix = downSampledMatrix;
     }
 }
