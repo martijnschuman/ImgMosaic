@@ -3,16 +3,46 @@
 namespace ImgMosaic.Models;
 
 public class ImgMosaicGenerator {
-    public List<Image> loadImages(string folderPath) {
+    private int InputResolution = 3;
+    private int TargetResolution = 3;
+    private int TileWidth = 24;
+    private int TileHeight = 15;
+
+    public enum InputTypes {
+        Input,
+        Target
+    }
+
+    public ImgMosaicGenerator(int inputResolution, int targetResolution) {
+        InputResolution = inputResolution;
+        TargetResolution = targetResolution;
+    }
+
+    public List<Image> LoadImages(InputTypes type, string folderPath) {
         List<Image> images = new List<Image>();
 
         if (Directory.Exists(folderPath)) {
-            foreach (var imagePath in Directory.EnumerateFiles(folderPath, "*.png")) {
-                using var tileImage = Cv2.ImRead(imagePath, ImreadModes.Color);
+            foreach (var imagePath in Directory.EnumerateFiles(folderPath).Where(f => f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))) {
+                var tileImage = Cv2.ImRead(imagePath, ImreadModes.Color);
+
                 if (tileImage.Empty()) {
                     Console.WriteLine($"Failed to load image: {imagePath}");
                     continue;
                 }
+
+                // Calculate aspectRatio for width
+                if (type == InputTypes.Target) {
+                    double aspectRatio = (double)tileImage.Cols / tileImage.Rows;
+                    int width = (int)Math.Round(TileHeight * aspectRatio);
+
+                }
+
+                // Resize all input images to fixed size
+                if (type == InputTypes.Input) {
+                    Cv2.Resize(tileImage, tileImage, new Size(TileWidth, TileHeight));
+                }
+
+                int resolution = type == InputTypes.Input ? InputResolution : TargetResolution; 
 
                 var img = new Image(
                     filePath: imagePath,
@@ -23,7 +53,7 @@ public class ImgMosaicGenerator {
                     sizeInBytes: tileImage.Total() * tileImage.ElemSize(),
                     channels: tileImage.Channels(),
                     fullMatrix: tileImage,
-                    downSampledMatrix: calcuateImageMatrixForSpecificResolution(tileImage, 3)
+                    downSampledMatrix: CalcuateImageMatrixForSpecificResolution(tileImage, resolution)
                 );
                 images.Add(img);
             }
@@ -35,26 +65,26 @@ public class ImgMosaicGenerator {
         return images;
     }
 
-    private Pixel[,] calcuateImageMatrixForSpecificResolution(Mat image, int resolution) {
+    private Pixel[,] CalcuateImageMatrixForSpecificResolution(Mat image, int resolutionCols, int resolutionRows) {
         int cols = image.Width;
         int rows = image.Height;
 
         // Calculate the width and height of each block based on the resolution
-        int blockWidth = cols / resolution;
-        int blockHeight = rows / resolution;
+        int blockWidth = cols / resolutionCols;
+        int blockHeight = rows / resolutionRows;
 
         // Create a 2D array to hold the average color values
-        Pixel[,] matrix = new Pixel[resolution, resolution];
+        Pixel[,] matrix = new Pixel[resolutionRows, resolutionCols];
 
-        for (int y = 0; y < resolution; y++) {
-            for (int x = 0; x < resolution; x++) {
+        for (int row = 0; row < resolutionRows; row++) {
+            for (int x = 0; x < resolutionCols; x++) {
+                int startY = row * blockHeight;
                 int startX = x * blockWidth;
-                int startY = y * blockHeight;
-                int endX = (x == resolution - 1) ? cols : startX + blockWidth;
-                int endY = (y == resolution - 1) ? rows : startY + blockHeight;
+                int endY = (row == resolutionRows - 1) ? rows : startY + blockHeight;
+                int endX = (x == resolutionCols - 1) ? cols : startX + blockWidth;
 
                 long sumB = 0, sumG = 0, sumR = 0;
-                int count = 0;
+                long count = 0;
 
                 // Calculate the average color in the block
                 for (int j = startY; j < endY; j++) {
@@ -68,19 +98,22 @@ public class ImgMosaicGenerator {
                 }
 
                 // Calculate the average color values
-                byte avgB = (byte)(sumB / count);
-                byte avgG = (byte)(sumG / count);
-                byte avgR = (byte)(sumR / count);
-
-                // Store the average color in the matrix
-                matrix[y, x] = new Pixel(avgR, avgG, avgB);
+                if (count == 0) {
+                    matrix[row, x] = new Pixel(0, 0, 0);
+                }
+                else {
+                    byte avgB = (byte)(sumB / count);
+                    byte avgG = (byte)(sumG / count);
+                    byte avgR = (byte)(sumR / count);
+                    matrix[row, x] = new Pixel(avgR, avgG, avgB);
+                }
             }
         }
 
         return matrix;
     }
 
-    public void printMatrix(Pixel[,] matrix) {
+    public static void PrintMatrix(Pixel[,] matrix) {
         if (matrix == null || matrix.Length == 0) {
             Console.WriteLine("Matrix is empty or null.");
             return;
@@ -95,10 +128,74 @@ public class ImgMosaicGenerator {
         }
     }
 
-    public void saveImage(string outputPath, Mat image) {
+    public Mat ConstructFinalImage(List<Image> inputImages, Mat targetFullMatrix) {
+        int targetCols = targetFullMatrix.Width / TileWidth;
+        int targetRows = targetFullMatrix.Height / TileHeight;
+
+        Mat resizedTarget = new Mat();
+        Cv2.Resize(targetFullMatrix, resizedTarget, new Size(targetCols * TileWidth, targetRows * TileHeight));
+
+        Pixel[,] targetMatrix = CalcuateImageMatrixForSpecificResolution(resizedTarget, targetCols);
+
+        Mat result = new Mat(targetRows * TileHeight, targetCols * TileWidth, MatType.CV_8UC3);
+
+        for (int y = 0; y < targetRows; y++) {
+            for (int x = 0; x < targetCols; x++) {
+                Console.WriteLine($"Y: {y}");
+                Console.WriteLine($"X: {x}");
+                Console.WriteLine($"GetLength 0: {targetMatrix.GetLength(0)}");
+                Console.WriteLine($"GetLength 1: {targetMatrix.GetLength(1)}");
+
+                Pixel targetPixel = targetMatrix[y, x];
+
+                Image bestMatch = inputImages
+                    .OrderBy(img => CalculateColorDistance(AverageMatrix(img.DownSampledMatrix), targetPixel))
+                    .First();
+
+                Rect roi = new Rect(x * TileWidth, y * TileHeight, TileWidth, TileHeight);
+                bestMatch.FullMatrix.CopyTo(new Mat(result, roi));
+            }
+        }
+
+        return result;
+    }
+
+    private static double CalculateColorDistance(Pixel p1, Pixel p2) {
+        return Math.Sqrt(
+            Math.Pow(p1.Red - p2.Red, 2) +
+            Math.Pow(p1.Green - p2.Green, 2) +
+            Math.Pow(p1.Blue - p2.Blue, 2)
+        );
+    }
+
+    private static Pixel AverageMatrix(Pixel[,] matrix) {
+        long sumR = 0, sumG = 0, sumB = 0;
+        int width = matrix.GetLength(1);
+        int height = matrix.GetLength(0);
+        int count = width * height;
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                sumR += matrix[y, x].Red;
+                sumG += matrix[y, x].Green;
+                sumB += matrix[y, x].Blue;
+            }
+        }
+
+        return new Pixel((int)(sumR / count), (int)(sumG / count), (int)(sumB / count));
+    }
+
+
+    public static void SaveImage(string outputPath, string fileName, Mat image) {
         if (image.Empty()) {
             throw new Exception("Image is empty, cannot save.");
         }
-        Cv2.ImWrite(outputPath, image);
+        Console.WriteLine($"Saving to path {outputPath}");
+        
+        if (!Path.Exists(outputPath)) {
+            Directory.CreateDirectory(outputPath);
+        }
+
+        Cv2.ImWrite(Path.Combine(outputPath, fileName), image);
     }
 }
