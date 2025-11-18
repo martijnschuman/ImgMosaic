@@ -8,6 +8,7 @@ public class Image {
     public int Cols { get; set; }
     public int Rows { get; set; }
     public Mat FullMatrix { get; set; }
+    public int Penalty { get; set; }
 
     public Image(string filePath, string fileName, int cols, int rows, Mat fullMatrix) {
         FilePath = filePath;

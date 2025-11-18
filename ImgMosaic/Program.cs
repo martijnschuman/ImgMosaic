@@ -2,7 +2,16 @@
 using OpenCvSharp;
 using static ImgMosaic.Models.ImgMosaicGenerator;
 
-string inputPath = Path.Combine(Directory.GetCurrentDirectory(), "Src", "input");
+
+List<string> inputPath = new()
+{
+    Path.Combine("C:\\Users\\marti\\OneDrive\\Afbeeldingen\\2025\\US Exchange\\1 Saint Paul\\JPG"),
+    Path.Combine("C:\\Users\\marti\\OneDrive\\Afbeeldingen\\2025\\US Exchange\\08-23 Rasmussen Woods"),
+};
+
+
+
+
 string targetPath = Path.Combine(Directory.GetCurrentDirectory(), "Src", "target");
 string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "Src", "output");
 

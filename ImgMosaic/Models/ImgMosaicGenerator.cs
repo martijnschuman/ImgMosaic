@@ -5,6 +5,7 @@ namespace ImgMosaic.Models;
 public class ImgMosaicGenerator {
     private int TileWidth;
     private int TileHeight;
+    List<Image> images = new List<Image>();
 
     public enum InputTypes {
         Input,
@@ -16,37 +17,40 @@ public class ImgMosaicGenerator {
         TileHeight = tileHeight;
     }
 
-    public List<Image> LoadImages(InputTypes type, string folderPath) {
-        Console.WriteLine($"Loading images from path: {folderPath}");
+    public List<Image> LoadImages(InputTypes type, List<string> inputPath) {
         List<Image> images = new List<Image>();
 
-        if (Directory.Exists(folderPath)) {
-            foreach (var imagePath in GetFilesInFolder(folderPath)) {
-                var tileImage = Cv2.ImRead(imagePath, ImreadModes.Color);
+        foreach (var path in inputPath) {
+            Console.WriteLine($"Loading images from path: {path}");
 
-                if (tileImage.Empty()) {
-                    Console.WriteLine($"Failed to load image: {imagePath}");
-                    continue;
+            if (Directory.Exists(path)) {
+                foreach (var imagePath in GetFilesInFolder(path)) {
+                    var tileImage = Cv2.ImRead(imagePath, ImreadModes.Color);
+
+                    if (tileImage.Empty()) {
+                        Console.WriteLine($"Failed to load image: {imagePath}");
+                        continue;
+                    }
+
+                    // Resize all input images to fixed size
+                    if (type == InputTypes.Input) {
+                        Cv2.Resize(tileImage, tileImage, new Size(TileWidth, TileHeight));
+                    }
+
+                    Image img = new(
+                        filePath: imagePath,
+                        fileName: Path.GetFileNameWithoutExtension(imagePath),
+                        cols: tileImage.Width,
+                        rows: tileImage.Height,
+                        fullMatrix: tileImage
+                    );
+
+                    images.Add(img);
                 }
-
-                // Resize all input images to fixed size
-                if (type == InputTypes.Input) {
-                    Cv2.Resize(tileImage, tileImage, new Size(TileWidth, TileHeight));
-                }
-
-                Image img = new(
-                    filePath: imagePath,
-                    fileName: Path.GetFileNameWithoutExtension(imagePath),
-                    cols: tileImage.Width,
-                    rows: tileImage.Height,
-                    fullMatrix: tileImage
-                );
-
-                images.Add(img);
             }
-        }
-        else {
-            throw new Exception("Folder not found: " + folderPath);
+            else {
+                throw new Exception("Folder not found: " + path);
+            }
         }
 
         return images;
@@ -71,16 +75,64 @@ public class ImgMosaicGenerator {
 
         Mat result = new(targetRows * TileHeight, targetCols * TileWidth, MatType.CV_8UC3);
 
-        for (int rows = 0; rows < targetRows; rows++) {
-            for (int cols = 0; cols < targetCols; cols++) {
-                Pixel targetPixel = targetMatrix[rows, cols];
+        // Track which image was placed in each tile for neighbor penalties
+        Image[,] usedImages = new Image[targetRows, targetCols];
 
-                Image bestMatch = inputImages
-                    .OrderBy(img => CalculateColorDistance(GetAverageColor(img.FullMatrix), targetPixel))
-                    .First();
+        Random rand = new Random();
 
-                Rect roi = new Rect(cols * TileWidth, rows * TileHeight, TileWidth, TileHeight);
-                bestMatch.FullMatrix.CopyTo(new Mat(result, roi));
+        for (int row = 0; row < targetRows; row++) {
+            for (int col = 0; col < targetCols; col++) {
+                Pixel targetPixel = targetMatrix[row, col];
+
+                var ranked = inputImages
+                    .Select(img => {
+                        double colorDist = CalculateColorDistance(GetAverageColor(img.FullMatrix), targetPixel);
+
+                        // Add neighbor penalty
+                        double neighborPenalty = 0;
+                        if (row > 0 && usedImages[row - 1, col] == img) neighborPenalty += 1000;
+                        if (col > 0 && usedImages[row, col - 1] == img) neighborPenalty += 1000;
+                        if (row > 0 && col > 0 && usedImages[row - 1, col - 1] == img) neighborPenalty += 500;
+                        if (row > 0 && col < targetCols - 1 && usedImages[row - 1, col + 1] == img) neighborPenalty += 500;
+
+                        // Combine color distance, global penalty, and neighbor penalty
+                        double score = colorDist + 5 * img.Penalty + neighborPenalty;
+                        return new { Image = img, Score = score };
+                    })
+                    .OrderBy(x => x.Score)
+                    .ToList();
+
+                // Take top N candidates
+                int topN = Math.Min(5, ranked.Count);
+                var topCandidates = ranked.Take(topN).ToList();
+
+                // Weighted random pick (lower score = more likely)
+                double totalWeight = topCandidates.Sum(c => 1.0 / (c.Score + 1e-6));
+                double r = rand.NextDouble() * totalWeight;
+
+                Image bestMatchImage = topCandidates[0].Image; // fallback
+                foreach (var c in topCandidates) {
+                    r -= 1.0 / (c.Score + 1e-6);
+                    if (r <= 0) {
+                        bestMatchImage = c.Image;
+                        break;
+                    }
+                }
+
+                // Increase global penalty for fairness
+                bestMatchImage.Penalty++;
+
+                // Decay penalties slowly so images come back
+                foreach (var img in inputImages) {
+                    if (img.Penalty > 0) img.Penalty--;
+                }
+
+                // Place the tile
+                Rect roi = new Rect(col * TileWidth, row * TileHeight, TileWidth, TileHeight);
+                bestMatchImage.FullMatrix.CopyTo(new Mat(result, roi));
+
+                // Store in used matrix for neighbor checks
+                usedImages[row, col] = bestMatchImage;
             }
         }
 
