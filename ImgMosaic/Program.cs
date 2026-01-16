@@ -19,19 +19,21 @@ string outputPath = Path.Combine(Directory.GetCurrentDirectory(), "Src", "output
 
 ImgMosaicGenerator mosaic = new();
 
-List<Image> inputImages = mosaic.LoadImages(InputTypes.Input, inputPath);
-Image targetImage = mosaic.LoadImages(InputTypes.Target, targetPath)[0];
-Mat upscaledTarget = new Mat();
+List<Image> inputImages = mosaic.PreLoadImages(InputTypes.Input, inputPath);
+Image targetImage = mosaic.PreLoadImages(InputTypes.Target, targetPath)[0];
 
 // Resizes the target -> determins amount of tiles which are needed -> resolution
+Mat upscaledTarget = new Mat();
 Cv2.Resize(targetImage.MatchRes, upscaledTarget,
-    new Size(targetImage.Cols * 3, targetImage.Rows * 3),
+    new Size(targetImage.Cols * 4, targetImage.Rows * 4),
     interpolation: InterpolationFlags.Lanczos4);
 
+// Makes the final image
 Mat finalImage = mosaic.ConstructFinalImage(inputImages, upscaledTarget);
 string fileName = $"mosaic_{(int)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds}.png";
 SaveImage(outputPath, fileName, finalImage);
 
+// Makes the OpenSeaDragon mosaic
 string deepZoomDir = Path.Combine(outputPath, "mosaic_files");
 DeepZoomGenerator.Generate(finalImage, deepZoomDir);
 

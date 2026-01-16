@@ -10,14 +10,15 @@ public class Image {
     public Mat FullRes { get; set; }
     public Mat MatchRes { get; set; }
     public int Penalty { get; set; }
+    public Pixel AvgColor { get; set; }
 
-
-    public Image(string filePath, string fileName, int cols, int rows, Mat fullRes, Mat matchRes) {
+    public Image(string filePath, string fileName, int cols, int rows, Mat fullRes, Mat matchRes, Pixel avgColor) {
         FilePath = filePath;
         FileName = fileName;
         Cols = cols;
         Rows = rows;
         FullRes = fullRes;
         MatchRes = matchRes;
+        AvgColor = avgColor;
     }
 }
