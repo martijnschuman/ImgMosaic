@@ -3,18 +3,25 @@
 namespace ImgMosaic.Models;
 
 public class ImgMosaicGenerator {
-    private int TileWidth;
-    private int TileHeight;
-    List<Image> images = new List<Image>();
+    private readonly int MatchTileWidth;
+    private readonly int MatchTileHeight;
+    private readonly int RenderTileWidth;
+    private readonly int RenderTileHeight;
 
     public enum InputTypes {
         Input,
         Target
     }
 
-    public ImgMosaicGenerator(int tileWidth = 75, int tileHeight = 50) {
-        TileWidth = tileWidth;
-        TileHeight = tileHeight;
+    public ImgMosaicGenerator(
+    int matchTileWidth = 80,
+    int matchTileHeight = 45,
+    int renderTileWidth = 240,
+    int renderTileHeight = 135) {
+        MatchTileWidth = matchTileWidth;
+        MatchTileHeight = matchTileHeight;
+        RenderTileWidth = renderTileWidth;
+        RenderTileHeight = renderTileHeight;
     }
 
     public List<Image> LoadImages(InputTypes type, List<string> inputPath) {
@@ -24,7 +31,15 @@ public class ImgMosaicGenerator {
             Console.WriteLine($"Loading images from path: {path}");
 
             if (Directory.Exists(path)) {
-                foreach (var imagePath in GetFilesInFolder(path)) {
+                var filePaths = GetFilesInFolder(path);
+                if (filePaths.Count() == 0) {
+                    Console.WriteLine($"No images found in folder {path}");
+                    Environment.Exit(0);
+                }
+
+                Console.WriteLine($"Found {filePaths.Count()} images in folder");
+
+                foreach (var imagePath in filePaths) {
                     var tileImage = Cv2.ImRead(imagePath, ImreadModes.Color);
 
                     if (tileImage.Empty()) {
@@ -32,9 +47,20 @@ public class ImgMosaicGenerator {
                         continue;
                     }
 
-                    // Resize all input images to fixed size
+                    // Create consistent FullRes clone
+                    Mat fullRes = tileImage.Clone();
+
+                    // Create MatchRes depending on input type
+                    Mat matchRes;
                     if (type == InputTypes.Input) {
-                        Cv2.Resize(tileImage, tileImage, new Size(TileWidth, TileHeight));
+                        matchRes = new Mat();
+                        Cv2.Resize(tileImage, matchRes,
+                            new Size(MatchTileWidth, MatchTileHeight),
+                            0, 0, InterpolationFlags.Area);
+                    }
+                    else {
+                        // For target images we keep original resolution for matching
+                        matchRes = tileImage.Clone();
                     }
 
                     Image img = new(
@@ -42,7 +68,8 @@ public class ImgMosaicGenerator {
                         fileName: Path.GetFileNameWithoutExtension(imagePath),
                         cols: tileImage.Width,
                         rows: tileImage.Height,
-                        fullMatrix: tileImage
+                        fullRes: fullRes,
+                        matchRes: matchRes
                     );
 
                     images.Add(img);
@@ -68,12 +95,12 @@ public class ImgMosaicGenerator {
     public Mat ConstructFinalImage(List<Image> inputImages, Mat targetFullMatrix) {
         Console.WriteLine("Constructing final image");
 
-        int targetCols = targetFullMatrix.Width / TileWidth;
-        int targetRows = targetFullMatrix.Height / TileHeight;
+        int targetCols = targetFullMatrix.Width / MatchTileWidth;
+        int targetRows = targetFullMatrix.Height / MatchTileHeight;
 
         Pixel[,] targetMatrix = CalculateImageMatrixForSpecificResolution(targetFullMatrix, targetCols, targetRows);
 
-        Mat result = new(targetRows * TileHeight, targetCols * TileWidth, MatType.CV_8UC3);
+        Mat result = new(targetRows * RenderTileHeight, targetCols * RenderTileWidth, MatType.CV_8UC3);
 
         // Track which image was placed in each tile for neighbor penalties
         Image[,] usedImages = new Image[targetRows, targetCols];
@@ -86,7 +113,7 @@ public class ImgMosaicGenerator {
 
                 var ranked = inputImages
                     .Select(img => {
-                        double colorDist = CalculateColorDistance(GetAverageColor(img.FullMatrix), targetPixel);
+                        double colorDist = CalculateColorDistance(GetAverageColor(img.MatchRes), targetPixel);
 
                         // Add neighbor penalty
                         double neighborPenalty = 0;
@@ -128,8 +155,18 @@ public class ImgMosaicGenerator {
                 }
 
                 // Place the tile
-                Rect roi = new Rect(col * TileWidth, row * TileHeight, TileWidth, TileHeight);
-                bestMatchImage.FullMatrix.CopyTo(new Mat(result, roi));
+                Rect roi = new Rect(col * RenderTileWidth, row * RenderTileHeight, RenderTileWidth, RenderTileHeight);
+
+                Mat resizedTile = new();
+                Cv2.Resize(
+                    bestMatchImage.FullRes,
+                    resizedTile,
+                    new Size(RenderTileWidth, RenderTileHeight),
+                    0, 0,
+                    InterpolationFlags.Lanczos4
+                );
+
+                resizedTile.CopyTo(new Mat(result, roi));
 
                 // Store in used matrix for neighbor checks
                 usedImages[row, col] = bestMatchImage;
@@ -205,7 +242,7 @@ public class ImgMosaicGenerator {
             throw new Exception("Image is empty, cannot save.");
         }
         Console.WriteLine($"Saving to path {outputPath}");
-        
+
         if (!Path.Exists(outputPath)) {
             Directory.CreateDirectory(outputPath);
         }
