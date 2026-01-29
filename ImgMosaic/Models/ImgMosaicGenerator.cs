@@ -16,8 +16,8 @@ public class ImgMosaicGenerator {
     public ImgMosaicGenerator(
     int matchTileWidth = 80,
     int matchTileHeight = 45,
-    int renderTileWidth = 200,
-    int renderTileHeight = 113) {
+    int renderTileWidth = 180,
+    int renderTileHeight = 102) {
         MatchTileWidth = matchTileWidth;
         MatchTileHeight = matchTileHeight;
         RenderTileWidth = renderTileWidth;
@@ -40,6 +40,10 @@ public class ImgMosaicGenerator {
                 Console.WriteLine($"Found {filePaths.Count()} images in folder");
 
                 foreach (var filePath in filePaths) {
+                    if (images.Count > 750) {
+                        break;
+                    }
+
                     Mat image = LoadImage(filePath);
 
                     if (image.Empty()) {
@@ -98,7 +102,7 @@ public class ImgMosaicGenerator {
     }
 
     private IEnumerable<string> GetFilesInFolder(string folderPath) {
-        return Directory.EnumerateFiles(folderPath, "*.*") // , SearchOption.AllDirectories
+        return Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories) // , SearchOption.AllDirectories
             .Where(f =>
                 f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
                 f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||

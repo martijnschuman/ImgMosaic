@@ -7,8 +7,8 @@ Stopwatch stopwatch = new Stopwatch();
 stopwatch.Start();
 
 List<string> inputPath = new() {
-    Path.Combine("D:\\OneDrive\\Afbeeldingen\\2025\\US Exchange\\2025 U.S Exchange - telefoon"),
-    //Path.Combine("C:\\Users\\marti\\OneDrive\\Afbeeldingen\\2025\\US Exchange\\08-23 Rasmussen Woods"),
+    Path.Combine("D:\\OneDrive\\Afbeeldingen\\2025\\US Exchange"),
+    //Path.Combine("D:\\OneDrive\\Afbeeldingen\\2025\\US Exchange\\11 Florida"),
 };
 
 List<string> targetPath = new() {
@@ -24,8 +24,9 @@ Image targetImage = mosaic.PreLoadImages(InputTypes.Target, targetPath)[0];
 
 // Resizes the target -> determins amount of tiles which are needed -> resolution
 Mat upscaledTarget = new Mat();
+int multiplier = 4;
 Cv2.Resize(targetImage.MatchRes, upscaledTarget,
-    new Size(targetImage.Cols * 4, targetImage.Rows * 4),
+    new Size(targetImage.Cols * multiplier, targetImage.Rows * multiplier),
     interpolation: InterpolationFlags.Lanczos4);
 
 // Makes the final image
